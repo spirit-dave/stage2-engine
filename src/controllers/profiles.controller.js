@@ -2,6 +2,17 @@ const parseQuery = require("../utils/parser")
 const prisma = require("../utils/prisma")
 
 // ==============================
+// SAFE JSON SERIALIZER (FIX BIGINT)
+// ==============================
+function safeJson(data) {
+  return JSON.parse(
+    JSON.stringify(data, (key, value) =>
+      typeof value === "bigint" ? Number(value) : value
+    )
+  )
+}
+
+// ==============================
 // GET ALL PROFILES
 // ==============================
 exports.getAllProfiles = async (req, res) => {
@@ -20,7 +31,6 @@ exports.getAllProfiles = async (req, res) => {
       limit = 10
     } = req.query
 
-    // ✅ validate sort & order
     const validSort = ["age", "created_at", "gender_probability"]
     const validOrder = ["asc", "desc"]
 
@@ -31,22 +41,12 @@ exports.getAllProfiles = async (req, res) => {
       })
     }
 
-    // ✅ safe pagination
     const pageNum = parseInt(page) || 1
     const limitNum = Math.min(parseInt(limit) || 10, 50)
 
     const take = limitNum
     const skip = (pageNum - 1) * take
 
-    // ✅ optional validation (good for scoring)
-    if (min_age && isNaN(min_age)) {
-      return res.status(422).json({
-        status: "error",
-        message: "Invalid parameter type"
-      })
-    }
-
-    // ✅ dynamic filters
     const where = {}
 
     if (gender) where.gender = gender
@@ -71,7 +71,6 @@ exports.getAllProfiles = async (req, res) => {
       }
     }
 
-    // ✅ query DB
     const [data, total] = await Promise.all([
       prisma.profile.findMany({
         where,
@@ -84,19 +83,22 @@ exports.getAllProfiles = async (req, res) => {
       prisma.profile.count({ where })
     ])
 
-    return res.status(200).json({
-      status: "success",
-      page: pageNum,
-      limit: take,
-      total,
-      data
-    })
+    return res.status(200).json(
+      safeJson({
+        status: "success",
+        page: pageNum,
+        limit: take,
+        total,
+        data
+      })
+    )
 
   } catch (error) {
-    console.error(error)
+    console.error("🔥 getAllProfiles error:", error)
+
     return res.status(500).json({
       status: "error",
-      message: "Server error"
+      message: error.message
     })
   }
 }
@@ -109,7 +111,6 @@ exports.searchProfiles = async (req, res) => {
   try {
     const { q, page = 1, limit = 10 } = req.query
 
-    // ❗ required param
     if (!q || q.trim() === "") {
       return res.status(400).json({
         status: "error",
@@ -126,14 +127,12 @@ exports.searchProfiles = async (req, res) => {
       })
     }
 
-    // ✅ safe pagination
     const pageNum = parseInt(page) || 1
     const limitNum = Math.min(parseInt(limit) || 10, 50)
 
     const take = limitNum
     const skip = (pageNum - 1) * take
 
-    // 🔁 convert parsed → prisma where
     const where = {}
 
     if (parsed.gender) where.gender = parsed.gender
@@ -151,24 +150,27 @@ exports.searchProfiles = async (req, res) => {
         where,
         skip,
         take,
-        orderBy: { created_at: "desc" } // ✅ consistent ordering
+        orderBy: { created_at: "desc" }
       }),
       prisma.profile.count({ where })
     ])
 
-    return res.status(200).json({
-      status: "success",
-      page: pageNum,
-      limit: take,
-      total,
-      data
-    })
+    return res.status(200).json(
+      safeJson({
+        status: "success",
+        page: pageNum,
+        limit: take,
+        total,
+        data
+      })
+    )
 
-  } catch (err) {
-    console.error(err)
+  } catch (error) {
+    console.error("🔥 searchProfiles error:", error)
+
     return res.status(500).json({
       status: "error",
-      message: "Server error"
+      message: error.message
     })
   }
 }
